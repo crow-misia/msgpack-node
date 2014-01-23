@@ -151,12 +151,9 @@ v8_to_msgpack(Handle<Value> v8obj, msgpack_object *mo, msgpack_zone *mz, size_t 
             v8_to_msgpack(v, &mo->via.array.ptr[i], mz, depth);
         }
     } else if (Buffer::HasInstance(v8obj)) {
-        Local<Object> buf = v8obj->ToObject();
-
-
         mo->type = MSGPACK_OBJECT_RAW;
-        mo->via.raw.size = static_cast<uint32_t>(Buffer::Length(buf));
-        mo->via.raw.ptr = Buffer::Data(buf);
+        mo->via.raw.size = static_cast<uint32_t>(Buffer::Length(v8obj));
+        mo->via.raw.ptr = Buffer::Data(v8obj);
     } else {
         Local<Object> o = v8obj->ToObject();
 
@@ -285,26 +282,9 @@ pack(const Arguments &args) {
         }
     }
 
-    v8::Local<Buffer> slowBuffer = node::Buffer::New(
-        sb->data, sb->alloc, _free_sbuf, (void *)sb
-    );
+    Buffer *buf = node::Buffer::New(sb->data, sb->size, _free_sbuf, (void *)sb);
 
-    // godsflaw: this part makes msgpack.pack() 1x slower than JSON.stringify()
-    // reaching back into JS appears to be expensive.
-    v8::Local<Object> global = v8::Context::GetCurrent()->Global();
-    v8::Local<Value> bv = global->Get(String::NewSymbol("Buffer"));
-
-    assert(bv->IsFunction());
-
-    Local<Function> bc = v8::Local<Function>::Cast(bv);
-    Handle<Value> cArgs[3] = {
-        slowBuffer->handle_,
-        v8::Integer::New(sb->size),
-        v8::Integer::New(0)
-    };
-    v8::Local<Object> fastBuffer = bc->NewInstance(3, cArgs);
-
-    return scope.Close(fastBuffer);
+    return scope.Close(buf->handle_);
 }
 
 // var o = msgpack.unpack(buf);
@@ -324,19 +304,20 @@ unpack(const Arguments &args) {
             String::New("First argument must be a Buffer")));
     }
 
-    Local<Object> buf = args[0]->ToObject();
+    const char *buf = Buffer::Data(args[0]);
+    const size_t len = Buffer::Length(args[0]);
 
     MsgpackZone mz;
     msgpack_object mo;
     size_t off = 0;
 
-    switch (msgpack_unpack(Buffer::Data(buf), Buffer::Length(buf), &off, &mz._mz, &mo)) {
+    switch (msgpack_unpack(buf, len, &off, &mz._mz, &mo)) {
     case MSGPACK_UNPACK_EXTRA_BYTES:
     case MSGPACK_UNPACK_SUCCESS:
         try {
             msgpack_unpack_template->GetFunction()->Set(
                 msgpack_bytes_remaining_symbol,
-                Integer::New(static_cast<int32_t>(Buffer::Length(buf) - off))
+                Integer::New(static_cast<int32_t>(len - off))
             );
             return scope.Close(msgpack_to_v8(&mo));
         } catch (MsgpackException e) {
