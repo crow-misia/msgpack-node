@@ -3,7 +3,9 @@
 		{
 			'target_name': 'msgpackBinding',
 			'sources': [
-				'src/msgpack.cc',
+				'src/addon.cc',
+				'src/pack.cc',
+				'src/unpack.cc'
 			],
 			'include_dirs': [
 				'deps/msgpack'
