@@ -8,64 +8,142 @@ using namespace node;
 
 static Persistent<FunctionTemplate> msgpack_unpack_template;
 
-// Convert a MessagePack object to a V8 object.
-//
-// This method is recursive. It will probably blow out the stack on objects
-// with extremely deep nesting.
-static Handle<Value>
-msgpack_to_v8(msgpack_object *mo) {
-    switch (mo->type) {
-    case MSGPACK_OBJECT_NIL:
-        return Null();
 
-    case MSGPACK_OBJECT_BOOLEAN:
-        return (mo->via.boolean) ?
-            True() :
-            False();
+typedef struct { } unpack_user;
 
-    case MSGPACK_OBJECT_POSITIVE_INTEGER:
-        // As per Issue #42, we need to use the base Number
-        // class as opposed to the subclass Integer, since
-        // only the former takes 64-bit inputs. Using the
-        // Integer subclass will truncate 64-bit values.
-        return Number::New(static_cast<double>(mo->via.u64));
+#define msgpack_unpack_struct(name) \
+  struct template ## name
 
-    case MSGPACK_OBJECT_NEGATIVE_INTEGER:
-        // See comment for MSGPACK_OBJECT_POSITIVE_INTEGER
-        return Number::New(static_cast<double>(mo->via.i64));
+#define msgpack_unpack_func(ret, name) \
+  ret template ## name
 
-    case MSGPACK_OBJECT_DOUBLE:
-        return Number::New(mo->via.dec);
+#define msgpack_unpack_callback(name) \
+  template_callback ## name
 
-    case MSGPACK_OBJECT_ARRAY: {
-        Local<Array> a = Array::New(mo->via.array.size);
+#define msgpack_unpack_object Handle<Value>
 
-        for (uint32_t i = 0; i < mo->via.array.size; i++) {
-            a->Set(i, msgpack_to_v8(&mo->via.array.ptr[i]));
-        }
+#define msgpack_unpack_user unpack_user
 
-        return a;
+#define msgpack_object Handle<Value>
+
+#include <msgpack/unpack.h>
+#include <msgpack/unpack_define.h>
+
+struct template_context;
+typedef struct template_context template_context;
+
+static void template_init(template_context* ctx);
+
+static Handle<Value> template_data(template_context* ctx);
+
+static int template_execute(template_context* ctx,
+    const char* data, size_t len, size_t* off);
+
+static inline Handle<Value> template_callback_root(unpack_user* u)
+{ return Undefined(); }
+
+static inline int template_callback_uint8(unpack_user* u, uint8_t d, Handle<Value>* o)
+{ *o = Integer::NewFromUnsigned(d); return 0; }
+
+static inline int template_callback_uint16(unpack_user* u, uint16_t d, Handle<Value>* o)
+{ *o = Integer::NewFromUnsigned(d); return 0; }
+
+static inline int template_callback_uint32(unpack_user* u, uint32_t d, Handle<Value>* o)
+{ *o = Integer::NewFromUnsigned(d); return 0; }
+
+static inline int template_callback_uint64(unpack_user* u, uint64_t d, Handle<Value>* o)
+{ *o = Number::New(static_cast<double>(d)); return 0; }
+
+static inline int template_callback_int8(unpack_user* u, int8_t d, Handle<Value>* o)
+{ *o = Integer::New(d); return 0; }
+
+static inline int template_callback_int16(unpack_user* u, int16_t d, Handle<Value>* o)
+{ *o = Integer::New(d); return 0; }
+
+static inline int template_callback_int32(unpack_user* u, int32_t d, Handle<Value>* o)
+{ *o = Integer::New(d); return 0; }
+
+static inline int template_callback_int64(unpack_user* u, int64_t d, Handle<Value>* o)
+{ *o = Number::New(static_cast<double>(d)); return 0; }
+
+static inline int template_callback_float(unpack_user* u, float d, Handle<Value>* o)
+{ *o = Number::New(static_cast<double>(d)); return 0; }
+
+static inline int template_callback_double(unpack_user* u, double d, Handle<Value>* o)
+{ *o = Number::New(d); return 0; }
+
+static inline int template_callback_nil(unpack_user* u, Handle<Value>* o)
+{ *o = Null(); return 0; }
+ 
+static inline int template_callback_true(unpack_user* u, Handle<Value>* o)
+{ *o = True(); return 0; }
+
+static inline int template_callback_false(unpack_user* u, Handle<Value>* o)
+{ *o = False(); return 0; }
+
+static inline int template_callback_array(unpack_user* u, size_t n, Handle<Value>* o)
+{ *o = Array::New(); return 0; }
+
+static inline int template_callback_array_item(unpack_user* u, Handle<Value>* c, Handle<Value> o)
+{
+  Handle<Array> a = (*c).As<Array>();
+
+  a->Set(a->Length(), o);
+
+  return 0;
+}
+
+static inline int template_callback_map(unpack_user* u, unsigned int n, Handle<Value>* o)
+{ *o = Object::New(); return 0; }
+
+static inline int template_callback_map_item(unpack_user* u, Handle<Value>* c, Handle<Value> k, Handle<Value> v)
+{
+  Handle<Object> o = (*c).As<Object>();
+
+  o->Set(k, v);
+
+  return 0;
+}
+
+static inline int template_callback_raw(unpack_user* u, const char* b, const char* p, unsigned int l, Handle<Value>* o)
+{ *o = String::New(p, l); return 0; }
+
+#include <msgpack/unpack_template.h>
+
+
+msgpack_unpack_return
+msgpack_unpack(const char* data, size_t len, size_t* off,
+      msgpack_zone* result_zone, Handle<Value>* result)
+{
+    size_t noff = 0;
+    if(off != NULL) { noff = *off; }
+
+    if(len <= noff) {
+      // FIXME
+      return MSGPACK_UNPACK_CONTINUE;
     }
 
-    case MSGPACK_OBJECT_RAW:
-        return String::New(mo->via.raw.ptr, mo->via.raw.size);
+    template_context ctx;
+    template_init(&ctx);
 
-    case MSGPACK_OBJECT_MAP: {
-        Local<Object> o = Object::New();
-
-        for (uint32_t i = 0; i < mo->via.map.size; i++) {
-            o->Set(
-                msgpack_to_v8(&mo->via.map.ptr[i].key),
-                msgpack_to_v8(&mo->via.map.ptr[i].val)
-            );
-        }
-
-        return o;
+    int e = template_execute(&ctx, data, len, &noff);
+    if(e < 0) {
+      return MSGPACK_UNPACK_PARSE_ERROR;
     }
 
-    default:
-        throw MsgpackException("Encountered unknown MesssagePack object type");
+    if(off != NULL) { *off = noff; }
+
+    if(e == 0) {
+      return MSGPACK_UNPACK_CONTINUE;
     }
+
+    *result = template_data(&ctx);
+
+    if(noff < len) {
+      return MSGPACK_UNPACK_EXTRA_BYTES;
+    }
+
+    return MSGPACK_UNPACK_SUCCESS;
 }
 
 // var o = msgpack.unpack(buf);
@@ -88,19 +166,17 @@ unpack(const Arguments &args) {
     const char *buf = Buffer::Data(args[0]);
     const size_t len = Buffer::Length(args[0]);
 
-    MsgpackZone mz;
-    msgpack_object mo;
+    Handle<Value> mo;
     size_t off = 0;
-
-    switch (msgpack_unpack(buf, len, &off, &mz._mz, &mo)) {
+    switch (msgpack_unpack(buf, len, &off, NULL, &mo)) {
     case MSGPACK_UNPACK_EXTRA_BYTES:
     case MSGPACK_UNPACK_SUCCESS:
         try {
             msgpack_unpack_template->GetFunction()->Set(
                 msgpack_bytes_remaining_symbol,
-                Integer::New(static_cast<int32_t>(len - off))
+                Integer::NewFromUnsigned(len - off)
             );
-            return scope.Close(msgpack_to_v8(&mo));
+            return scope.Close(mo);
         } catch (MsgpackException e) {
             return ThrowException(e.getThrownException());
         }
@@ -114,7 +190,7 @@ unpack(const Arguments &args) {
     }
 }
 
-void unpack_initialize(Handle<Object> target) {
+void unpack_initialize(const Handle<Object> target) {
     HandleScope scope;
 
     // Go through this mess rather than call NODE_SET_METHOD so that we can set

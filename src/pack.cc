@@ -168,7 +168,7 @@ pack(const Arguments &args) {
     return scope.Close(buf->handle_);
 }
 
-void pack_initialize(Handle<Object> target) {
+void pack_initialize(const Handle<Object> target) {
     HandleScope scope;
    
     NODE_SET_METHOD(target, "pack", pack);

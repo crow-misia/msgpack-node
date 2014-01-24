@@ -64,8 +64,8 @@ class MsgpackZone {
 };
 
 extern "C" {
-    void pack_initialize(Handle<Object> target);
-    void unpack_initialize(Handle<Object> target);
+    void pack_initialize(const Handle<Object> target);
+    void unpack_initialize(const Handle<Object> target);
 }
 
 #endif

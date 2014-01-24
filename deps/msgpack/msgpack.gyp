@@ -8,7 +8,6 @@
 					'gcc_atomic.cpp',
 					'object.cpp',
 					'objectc.c',
-					'unpack.c',
 					'vrefbuffer.c',
 					'zone.c',
 					'version.c'					
