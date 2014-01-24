@@ -15,7 +15,7 @@ using namespace node;
 
 // MSC does not support C99 trunc function.
 #ifdef _MSC_BUILD
-double trunc(double d){ return (d>0) ? floor(d) : ceil(d) ; }
+inline double trunc(double d){ return (d>0) ? floor(d) : ceil(d) ; }
 #endif
 
 static Persistent<FunctionTemplate> msgpack_unpack_template;
@@ -53,17 +53,17 @@ static stack<msgpack_sbuffer *> sbuffers;
 
 #define DBG_PRINT_BUF(buf, name) \
     do { \
+        char *data = Buffer::Data(buf); \
+        const size_t len = Buffer::Length(buf); \
+        const char *end = data + len; \
         fprintf(stderr, "Buffer %s has %lu bytes:\n", \
-            (name), Buffer::Length(buf) \
+            (name), len \
         ); \
-        for (uint32_t i = 0; i * 16 < Buffer::Length(buf); i++) { \
+        while (data < end) { \
             fprintf(stderr, "  "); \
-            for (uint32_t ii = 0; \
-                 ii < 16 && (i * 16) + ii < Buffer::Length(buf); \
-                 ii++) { \
+            for (int ii = 0; ii < 16 && data < end; data++) { \
                 fprintf(stderr, "%s%2.2hhx", \
-                    (ii > 0 && (ii % 2 == 0)) ? " " : "", \
-                    Buffer::Data(buf)[i * 16 + ii] \
+                    (ii > 0 && (ii % 2 == 0)) ? " " : "", data \
                 ); \
             } \
             fprintf(stderr, "\n"); \
