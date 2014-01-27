@@ -9,7 +9,9 @@ using namespace node;
 static Persistent<FunctionTemplate> msgpack_unpack_template;
 
 
-typedef struct { } unpack_user;
+typedef struct {
+  uint32_t index;
+} unpack_user;
 
 #define msgpack_unpack_struct(name) \
   struct template ## name
@@ -82,13 +84,13 @@ static inline int template_callback_false(unpack_user* u, Handle<Value>* o)
 { *o = False(); return 0; }
 
 static inline int template_callback_array(unpack_user* u, size_t n, Handle<Value>* o)
-{ *o = Array::New(); return 0; }
+{ *o = Array::New(n); u->index = 0; return 0; }
 
 static inline int template_callback_array_item(unpack_user* u, Handle<Value>* c, Handle<Value> o)
 {
   Handle<Array> a = (*c).As<Array>();
 
-  a->Set(a->Length(), o);
+  a->Set(u->index++, o);
 
   return 0;
 }
